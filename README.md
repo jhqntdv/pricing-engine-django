@@ -3,7 +3,6 @@ A Django UI for the [pricing-engine](https://github.com/jhqntdv/pricing-engine) 
 - **Live App:** [django-pricing-engine](https://django-pricing-engine-109577535661.us-central1.run.app)
 - **Password:** `1.9.9.5`
 
-<p align="center">
-  <img src="1.png" width="45%" />
-  <img src="2.png" width="45%" />
-</p>
+![Screenshot 1](1.png)
+
+![Screenshot 2](2.png)

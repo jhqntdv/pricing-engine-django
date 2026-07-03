@@ -10,3 +10,5 @@ venv/
 .env
 db.sqlite3
 staticfiles/
+1.png
+2.png
