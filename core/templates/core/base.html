@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bloombgg</title>
+    <style>
+        body {
+            background-color: #000000;
+            color: #FF9900;
+            /* Amber phosphor vibe */
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin: 0;
+            padding: 20px;
+            text-transform: uppercase;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: #FFFFFF;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        a {
+            color: #00FF00;
+            /* Green for links/actions */
+            text-decoration: none;
+        }
+
+        a:hover {
+            color: #FFFFFF;
+            background-color: #00FF00;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .nav-bar {
+            border-top: 2px solid #FF9900;
+            border-bottom: 2px solid #FF9900;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 20px;
+        }
+
+        .nav-item {
+            cursor: pointer;
+        }
+
+        .nav-item::before {
+            content: "<";
+            color: #FFFFFF;
+        }
+
+        .nav-item::after {
+            content: ">";
+            color: #FFFFFF;
+        }
+
+        .error {
+            color: #FF0000;
+            background-color: #330000;
+            padding: 10px;
+            border: 1px solid #FF0000;
+            margin-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            background-color: #000000;
+            color: #00FF00;
+            border: 1px solid #333;
+            font-family: 'Consolas', 'Courier New', monospace;
+            padding: 5px;
+            width: 300px;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: #FF9900;
+        }
+
+        button {
+            background-color: #333;
+            color: #FF9900;
+            border: 1px solid #FF9900;
+            font-family: 'Consolas', 'Courier New', monospace;
+            padding: 5px 15px;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            background-color: #FF9900;
+            color: #000;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            border: 1px solid #333;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            color: #FFFFFF;
+        }
+
+        .terminal-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            color: #00FF00;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="terminal-header">
+            <span>SYS: BLOOMBGG PRICING ENGINE</span>
+            <span id="clock">00:00:00 UTC</span>
+        </div>
+
+        <div class="nav-bar">
+            <a href="{% url 'index' %}" class="nav-item">MAIN DOCS</a>
+            <a href="{% url 'options' %}" class="nav-item">OPTIONS</a>
+            <a href="{% url 'exotics' %}" class="nav-item">EXOTICS</a>
+            <a href="{% url 'elns' %}" class="nav-item">ELNs</a>
+            <span style="flex-grow: 1;"></span>
+            {% if is_auth %}
+            <span style="color: #00FF00;">[ AUTHENTICATED ]</span>
+            <a href="{% url 'logout' %}" class="nav-item" style="color: #FF0000;">LOGOUT</a>
+            {% else %}
+            <a href="{% url 'login' %}" class="nav-item" style="color: #FF0000;">AUTHENTICATE</a>
+            {% endif %}
+        </div>
+
+        {% if messages %}
+        {% for message in messages %}
+        <div class="error">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+
+        {% block content %}
+        {% endblock %}
+    </div>
+
+    <script>
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').textContent = now.toISOString().substring(11, 19) + ' UTC';
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+    </script>
+</body>
+
+</html>

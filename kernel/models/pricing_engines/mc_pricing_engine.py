@@ -1,0 +1,412 @@
+from .abstract_pricing_engine import AbstractPricingEngine
+from ..stochastic_processes import StochasticProcess
+from kernel.products.abstract_derivative import AbstractDerivative
+from kernel.products.options.abstract_option import AbstractOption
+from kernel.products.options_strategies.abstract_option_strategy import AbstractOptionStrategy
+from kernel.market_data.market import Market
+from kernel.tools import ObservationFrequency, NumpyRandomGenerator, SobolRandomGenerator
+from utils.pricing_settings import PricingSettings
+from utils.pricing_results import PricingResults
+from kernel.models.stochastic_processes import BlackScholesProcess, HestonProcess
+from kernel.products.structured_products.abstract_structured_product import AbstractStructuredProduct
+from kernel.products.options.vanilla_options import EuropeanCallOption, EuropeanPutOption
+from kernel.models.discretization_schemes.euler_scheme import EulerScheme
+import numpy as np
+import pandas as pd
+import copy
+from typing import Union
+from kernel.exceptions import UnsupportedProductError, UnsupportedModelError
+
+class MCPricingEngine(AbstractPricingEngine):
+    """A Monte Carlo pricing engine for classic financial derivatives.
+    """
+
+    def __init__(self, market: Market, settings: PricingSettings):
+        """Initialize the Monte Carlo pricing engine.
+
+        Args:
+            market: The market data containing underlying and rates.
+            settings: Configuration settings for the Monte Carlo simulation.
+        """
+        super().__init__(market)
+        self.settings = settings
+        self.nb_paths = settings.nb_paths
+        self.nb_steps = settings.nb_steps
+        self.random_seed = settings.random_seed
+        self.enable_greeks = settings.compute_greeks 
+        self.valuation_date = settings.valuation_date 
+        self.model = settings.model
+
+    def calculate_option(self, derivative: 'AbstractOption') -> 'PricingResults':
+        """Calculate the price of a standard option.
+
+        Args:
+            derivative: The option derivative to price.
+
+        Returns:
+            The pricing results containing price and optional Greeks.
+        """
+        return self.get_result(derivative)
+
+    def calculate_strategy(self, derivative: 'AbstractOptionStrategy') -> 'PricingResults':
+        """Calculate the price of an option strategy.
+
+        Args:
+            derivative: The option strategy to price.
+
+        Returns:
+            The aggregated pricing results for the strategy.
+        """
+        strat_results = []
+        for opt, is_long in derivative.options:
+            position = 1 if is_long else -1
+            result = self.get_result(derivative=opt, position=position)
+            strat_results.append(result)
+        return PricingResults.get_aggregated_results(strat_results)
+
+    def calculate_structured_product(self, derivative: 'AbstractStructuredProduct') -> 'PricingResults':
+        """Calculate the price of a structured product.
+
+        Args:
+            derivative: The structured product to price.
+
+        Returns:
+            The pricing results for the structured product.
+        """
+        return self.get_result(derivative)
+
+    def calculate_rate_product(self, derivative: 'AbstractRateProduct') -> 'PricingResults':
+        """Calculate the price of a rate product (Unsupported).
+
+        Args:
+            derivative: The rate product.
+
+        Raises:
+            UnsupportedProductError: MC engine does not support rate products.
+        """
+        raise UnsupportedProductError("MCPricingEngine does not support rate products.")
+
+    def get_result(self, derivative: AbstractDerivative, position: int = 1) -> PricingResults:
+        """Execute the Monte Carlo simulation to get pricing results and Greeks.
+
+        Args:
+            derivative: The derivative to evaluate.
+            position: Position multiplier (+1 for long, -1 for short). Defaults to 1.
+
+        Returns:
+            The pricing results.
+        """
+        self.derivative = derivative
+        if hasattr(derivative, "initial_spot") and getattr(derivative, "initial_spot", None) is None:
+            derivative.initial_spot = self.market.underlying_asset.last_price
+        process = self.get_stochastic_process(derivative=derivative, market=self.market)
+        price, std_dev = self._get_price(derivative, process, self.market, return_std=True)
+        
+        pricing_results = PricingResults()
+        pricing_results.price = price * position
+        pricing_results.std_dev = std_dev
+
+        if self.enable_greeks:
+            delta, gamma = self._delta_gamma(derivative, price)
+            vega = self._vega(derivative)
+            rho = self._rho(derivative)
+            theta = self._theta(price, delta, gamma, vega, derivative, self.market)
+            
+            pricing_results.set_greek("delta", delta * position)
+            pricing_results.set_greek("gamma", gamma * position)
+            pricing_results.set_greek("vega", vega * position)
+            pricing_results.set_greek("rho", rho * position)
+            pricing_results.set_greek("theta", theta * position)
+        
+        return pricing_results
+    
+    def get_stochastic_process(self, derivative: AbstractOption, market: Market) -> StochasticProcess:
+        """Create the appropriate stochastic process based on the settings.
+
+        Args:
+            derivative: The derivative being priced.
+            market: The market data containing rates and volatility.
+
+        Returns:
+            The configured stochastic process.
+
+        Raises:
+            UnsupportedModelError: If the configured model is not supported.
+        """
+        T = derivative.maturity
+        if hasattr(derivative, "strike"):
+            K = derivative.strike
+        else:
+            K = market.underlying_asset.last_price
+
+        initial_value = market.underlying_asset.last_price
+        delta_t = T / self.nb_steps
+        drift = [
+            market.get_rate(T) if self.nb_steps == 1 
+            else market.get_fwd_rate(i * delta_t, (i + 1) * delta_t) for i in range(self.nb_steps)
+        ]
+        volatility = market.get_volatility(K, T)
+        
+        gen_type = getattr(self.settings, "random_generator_type", "NUMPY")
+        if hasattr(gen_type, "value"):
+            gen_type = gen_type.value
+            
+        if gen_type == "SOBOL":
+            generator = SobolRandomGenerator()
+        else:
+            generator = NumpyRandomGenerator()
+
+        if self.model.name == "BLACK_SCHOLES":
+            return BlackScholesProcess(S0=initial_value, T=T, nb_steps=self.nb_steps, drift=drift, volatility=volatility, random_generator=generator)
+        elif self.model.name == "HESTON":
+            # Fix: Parameters are no longer hardcoded. Please ensure the model configuration provides these parameters.
+            kappa = getattr(self.model, "kappa", 8.1471)
+            theta = getattr(self.model, "theta", 0.0736)
+            sigma = getattr(self.model, "sigma", 0.3905)
+            rho = getattr(self.model, "rho", -0.1707)
+            # Prioritize the initial variance defined by the model, otherwise fallback to the square of market volatility.
+            v0 = getattr(self.model, "v0", volatility**2)
+            
+            # Feller condition sanity check: 2 * kappa * theta > sigma^2 keeps variance positive
+            # Current default params (kappa=8.14, theta=0.07, sigma=0.39): 2*8.14*0.07 = 1.13 > 0.15 (Satisfied)
+            # if 2 * kappa * theta <= sigma**2:
+            #     logging.warning("Feller condition violated! Variance path may frequently hit zero.")
+            
+            return HestonProcess(S0=initial_value, v0=v0, T=T, nb_steps=self.nb_steps, 
+                                 drift=drift, kappa=kappa, theta=theta, sigma=sigma, rho=rho, random_generator=generator)
+        else:
+            raise UnsupportedModelError(f"Unsupported model: {self.model.name}. Supported models are: BLACK_SCHOLES, HESTON.")
+
+    def _get_price(self, derivative: AbstractDerivative, stochastic_process: StochasticProcess, current_market: Market = None, pre_simulated_paths: Union[np.ndarray, "SimulationResult"] = None, return_std: bool = False):
+        """Simulate paths and calculate the discounted price.
+
+        Args:
+            derivative: The derivative to evaluate.
+            stochastic_process: The simulated process.
+            current_market: Overridden market data for simulations.
+            pre_simulated_paths: Optional paths to use directly. Accepts a raw np.ndarray or a SimulationResult.
+            return_std: Whether to return the standard deviation.
+
+        Returns:
+            The average price (and standard deviation if requested).
+        """
+        if current_market is None:
+            raise ValueError("current_market must be explicitly provided to ensure drift and discounting share the same curve.")
+            
+        if pre_simulated_paths is not None:
+            price_paths = getattr(pre_simulated_paths, "spot_paths", pre_simulated_paths)
+        else:
+            scheme = EulerScheme()
+            sim_result = scheme.simulate_paths(process=stochastic_process, nb_paths=self.nb_paths, seed=self.random_seed)
+            price_paths = sim_result.spot_paths
+            
+        # Vectorized payoff evaluation: derivative.get_discounted_payoff now accepts
+        # the full (nb_paths, nb_steps+1) matrix and returns a (nb_paths,) array,
+        # eliminating the Python loop that previously iterated 50,000+ times.
+        payoffs = derivative.get_discounted_payoff(price_paths, current_market)
+
+        # The payoff is already discounted by the derivative internally
+        price = np.mean(payoffs)
+        if return_std:
+            std_dev = np.std(payoffs, ddof=1) / np.sqrt(len(payoffs))
+            return price, std_dev
+        return price
+
+    def _spot_eps(self, derivative: AbstractOption) -> float:
+        S0 = self.market.underlying_asset.last_price
+        return max(1e-2 * S0, 1e-8)
+
+    def _delta_gamma(self, derivative: AbstractOption, base_price: float) -> tuple[float, float]:
+        epsilon_spot = self._spot_eps(derivative)
+        process_up = self.get_stochastic_process(derivative, self.market)
+        process_down = self.get_stochastic_process(derivative, self.market)
+        process_up.S0 += epsilon_spot
+        process_down.S0 -= epsilon_spot
+        
+        price_up = self._get_price(derivative, process_up, self.market)
+        price_down = self._get_price(derivative, process_down, self.market)
+        
+        delta = (price_up - price_down) / (2 * epsilon_spot)
+        gamma = (price_up + price_down - 2 * base_price) / (epsilon_spot ** 2)
+        return delta, gamma
+
+    def _vega(self, derivative: AbstractOption) -> float:
+        epsilon = 0.01
+        vega = 0.0
+        if self.model.name == "BLACK_SCHOLES":
+            process_up = self.get_stochastic_process(derivative, self.market) 
+            process_up.sigma += epsilon 
+            process_down = self.get_stochastic_process(derivative, self.market)
+            process_down.sigma -= epsilon
+    
+            price_up = self._get_price(derivative, process_up, self.market)
+            price_down = self._get_price(derivative, process_down, self.market)
+            vega = (price_up - price_down) / (2 * epsilon)
+            
+        elif self.model.name == "HESTON":
+            process_up = self.get_stochastic_process(derivative, self.market)
+            process_down = self.get_stochastic_process(derivative, self.market)
+            
+            base_vol = np.sqrt(process_up.v0)
+            process_up.v0 = (base_vol + epsilon) ** 2
+            process_down.v0 = (base_vol - epsilon) ** 2
+            
+            price_up = self._get_price(derivative, process_up, self.market)
+            price_down = self._get_price(derivative, process_down, self.market)
+            vega = (price_up - price_down) / (2 * epsilon)
+
+        return vega
+
+    def _rho(self, derivative: AbstractOption) -> float:
+        epsilon = 0.0001
+        epsilon_fit = epsilon * 100 
+        market_up = self.market.bump_flat_yield_curve_fast(epsilon_fit)
+        market_down = self.market.bump_flat_yield_curve_fast(-epsilon_fit)
+
+        process_up = self.get_stochastic_process(derivative, market_up)
+        process_down = self.get_stochastic_process(derivative, market_down)
+        
+        price_up = self._get_price(derivative, process_up, market_up)
+        price_down = self._get_price(derivative, process_down, market_down)
+        return (price_up - price_down) / (2 * epsilon)
+
+    def _theta(self, price: float, delta: float, gamma: float, vega: float, derivative: AbstractOption, market: Market) -> float:
+        """Compute Theta = -dV/dtau using the BS PDE (vanilla) or CRN forward difference (exotic/Heston).
+
+        The CRN method reuses the base simulation paths with the last time column
+        dropped, giving a genuine reduction in time-to-maturity at fixed S0 with
+        identical random increments — zero grid noise, no sqrt(dt) mismatch.
+
+        Args:
+            price: The base price of the derivative.
+            delta: The delta of the derivative.
+            gamma: The gamma of the derivative.
+            vega: The vega of the derivative.
+            derivative: The derivative being priced.
+            market: The market data.
+
+        Returns:
+            The Theta value (per year).
+        """
+        S = market.underlying_asset.last_price
+        r = market.get_rate(1/365)
+        
+        is_vanilla = isinstance(derivative, (EuropeanCallOption, EuropeanPutOption))
+        if self.model.name == "BLACK_SCHOLES" and is_vanilla:
+            # Analytical BS PDE theta (unchanged)
+            if hasattr(derivative, "strike"):
+                K = derivative.strike
+            else:
+                K = market.underlying_asset.last_price
+            sigma = market.get_volatility(K, derivative.maturity)
+            theta = -0.5 * sigma**2 * S**2 * gamma - r * S * delta + r * price
+            
+        elif self.model.name == "HESTON" or not is_vanilla:
+            # CRN forward difference: need at least 2 steps so that dropping
+            # the last column leaves a valid grid with >= 1 time step.
+            if self.nb_steps < 2:
+                import warnings
+                warnings.warn("CRN Theta needs nb_steps >= 2; returning 0.0.")
+                return 0.0
+
+            dt_grid = derivative.maturity / self.nb_steps  # one grid step = bump size
+
+            # 1. Simulate base paths once with the SAME seed used for `price`.
+            process = self.get_stochastic_process(derivative, market)
+            scheme = EulerScheme()
+            base_sim_result = scheme.simulate_paths(process, self.nb_paths, self.random_seed)
+    
+            # 2. Drop the last time column: the first (nb_steps) columns ARE the
+            #    process over [0, tau - dt] at fixed S0 with identical increments.
+            #    This is CRN by construction — zero re-simulation, zero dt mismatch.
+            bumped_spot = base_sim_result.spot_paths[:, :-1]
+            bumped_var = base_sim_result.variance_paths[:, :-1] if base_sim_result.variance_paths is not None else None
+            from kernel.models.discretization_schemes.simulation_result import SimulationResult
+            bumped_paths = SimulationResult(spot_paths=bumped_spot, variance_paths=bumped_var)
+
+            # 3. Re-price with time-to-maturity reduced by exactly one grid step.
+            deriv_bumped = copy.deepcopy(derivative)
+            deriv_bumped.maturity = derivative.maturity - dt_grid
+
+            process_bumped = self.get_stochastic_process(deriv_bumped, market)
+            price_bumped = self._get_price(
+                deriv_bumped, process_bumped,
+                current_market=market, pre_simulated_paths=bumped_paths
+            )
+
+            # Theta = (V(tau - dt) - V(tau)) / dt
+            theta = (price_bumped - price) / dt_grid
+        else:
+            raise ValueError("Model not supported for calculating theta.")
+
+        return theta
+
+    def get_delta(self, derivative: AbstractOption, epsilon: float = 1) -> float:
+        """Compute the Delta of the option.
+
+        Args:
+            derivative: The derivative being priced.
+            epsilon: Ignored. Used internal _spot_eps.
+
+        Returns:
+            The Delta value.
+        """
+        base_process = self.get_stochastic_process(derivative, self.market)
+        base_price = self._get_price(derivative, base_process, self.market)
+        delta, _ = self._delta_gamma(derivative, base_price)
+        return delta
+    
+    def get_gamma(self, derivative: AbstractOption, epsilon: float = 1) -> float:
+        """Compute the Gamma of the option.
+
+        Args:
+            derivative: The derivative being priced.
+            epsilon: Ignored. Used internal _spot_eps.
+
+        Returns:
+            The Gamma value.
+        """
+        base_process = self.get_stochastic_process(derivative, self.market)
+        base_price = self._get_price(derivative, base_process, self.market)
+        _, gamma = self._delta_gamma(derivative, base_price)
+        return gamma
+
+    def get_vega(self, derivative: AbstractOption, epsilon: float = 0.01) -> float:
+        """Compute the Vega of the option.
+
+        Args:
+            derivative: The derivative being priced.
+            epsilon: Ignored.
+
+        Returns:
+            The Vega value.
+        """
+        return self._vega(derivative)
+    
+    def get_rho(self, derivative: AbstractOption, epsilon: float = 0.0001) -> float:
+        """Compute the Rho of the option.
+
+        Args:
+            derivative: The derivative being priced.
+            epsilon: Ignored.
+
+        Returns:
+            The Rho value.
+        """
+        return self._rho(derivative)
+        
+    def get_theta(self, price: float, delta: float, gamma: float, vega: float, derivative: AbstractOption, market: Market) -> float:
+        """Compute the Theta of the option using finite difference or Black-Scholes PDE.
+
+        Args:
+            price: Current price.
+            delta: Current delta.
+            gamma: Current gamma.
+            vega: Current vega.
+            derivative: The derivative being priced.
+            market: The market data.
+
+        Returns:
+            The Theta value.
+        """
+        return self._theta(price, delta, gamma, vega, derivative, market)

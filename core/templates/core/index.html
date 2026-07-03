@@ -1,0 +1,63 @@
+{% extends 'core/base.html' %}
+
+{% block content %}
+<h1>SYSTEM DOCUMENTATION</h1>
+
+<div style="margin-bottom: 30px; border: 1px solid #333; padding: 15px;">
+    <h2>INDEX DIRECTORY</h2>
+    <ul>
+        <li><a href="#docs-overview">01. SYSTEM OVERVIEW</a></li>
+        <li><a href="#docs-options">02. OPTIONS DOCUMENTATION</a></li>
+        <li><a href="#docs-exotics">03. EXOTICS DOCUMENTATION</a></li>
+        <li><a href="#docs-elns">04. EQUITY LINKED NOTES (ELNs) DOCUMENTATION</a></li>
+    </ul>
+</div>
+
+<div id="docs-overview" style="margin-bottom: 40px; border-bottom: 1px dashed #333; padding-bottom: 20px;">
+    <h2>01. SYSTEM OVERVIEW</h2>
+    <p>
+        THIS TERMINAL PROVIDES ACCESS TO THE PROPRIETARY PRICING ENGINE.<br>
+        STATUS: [ ONLINE ]
+    </p>
+</div>
+
+<div id="docs-options" style="margin-bottom: 40px; border-bottom: 1px dashed #333; padding-bottom: 20px;">
+    <h2>02. OPTIONS DOCUMENTATION</h2>
+    <p>
+        <strong>MODEL:</strong> BLACK-SCHOLES / LOCAL VOLATILITY<br>
+        <strong>DESCRIPTION:</strong> Standard European and American options pricing engine.
+    </p>
+    <p>
+        The options calculator computes NPV and standard Greeks (Delta, Gamma, Vega).
+        Ensure the underlying ticker is valid and the spot price reflects current market conditions.
+    </p>
+    <a href="{% url 'options' %}">> PROCEED TO OPTIONS CALCULATOR</a>
+</div>
+
+<div id="docs-exotics" style="margin-bottom: 40px; border-bottom: 1px dashed #333; padding-bottom: 20px;">
+    <h2>03. EXOTICS DOCUMENTATION</h2>
+    <p>
+        <strong>MODEL:</strong> MONTE CARLO SIMULATION<br>
+        <strong>DESCRIPTION:</strong> Pricing for path-dependent and barrier options.
+    </p>
+    <p>
+        The exotics engine relies on the SSVI volatility surface for accurate barrier touch probabilities.
+        Computations may take slightly longer due to the required simulation paths.
+    </p>
+    <a href="{% url 'exotics' %}">> PROCEED TO EXOTICS CALCULATOR</a>
+</div>
+
+<div id="docs-elns" style="margin-bottom: 40px; border-bottom: 1px dashed #333; padding-bottom: 20px;">
+    <h2>04. EQUITY LINKED NOTES (ELNs) DOCUMENTATION</h2>
+    <p>
+        <strong>MODEL:</strong> HYBRID FIXED INCOME / EQUITY<br>
+        <strong>DESCRIPTION:</strong> Structured product issuance pricing.
+    </p>
+    <p>
+        Decomposes the ELN into a zero-coupon bond and an embedded derivative (typically a call option or basket option).
+        Yields the fair issue price and component values.
+    </p>
+    <a href="{% url 'elns' %}">> PROCEED TO ELNS CALCULATOR</a>
+</div>
+
+{% endblock %}

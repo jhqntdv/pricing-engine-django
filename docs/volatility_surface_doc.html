@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>VOLATILITY SURFACE DOCS</title>
+    <style>
+        body { background-color: #000000; color: #FF9900; font-family: 'Consolas', 'Courier New', monospace; margin: 0; padding: 20px; text-transform: uppercase; }
+        h1, h2, h3 { color: #FFFFFF; border-bottom: 1px solid #333; padding-bottom: 5px; text-transform: uppercase; margin-top: 30px; }
+        a { color: #00FF00; text-decoration: none; }
+        a:hover { color: #FFFFFF; background-color: #00FF00; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }
+        th, td { border: 1px solid #333; padding: 10px; text-align: left; }
+        th { color: #FFFFFF; background-color: #111; }
+        .terminal-header { display: flex; justify-content: space-between; margin-bottom: 20px; color: #00FF00; border-bottom: 2px solid #FF9900; padding-bottom: 10px; }
+        .section-box { border: 1px solid #333; padding: 15px; margin-bottom: 20px; }
+        .highlight { color: #00FF00; }
+        .alert { border: 1px solid #FF0000; padding: 10px; background-color: #330000; color: #FFFFFF; margin: 10px 0; }
+        ul { list-style-type: square; }
+        li { margin-bottom: 10px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="terminal-header">
+            <span>SYS: PRICING ENGINE / DOCS / VOLATILITY MODELS</span>
+            <span>STATUS: ONLINE</span>
+        </div>
+
+        <h1>APPENDIX: VOLATILITY SURFACE MODELS (SVI VS SSVI)</h1>
+        
+        <div class="alert">
+            <strong>TARGET AUDIENCE:</strong> Quantitative Analysts (Quants) and Structuring Desks.<br>
+            This document outlines the underlying mathematics, calibration capabilities, and failure diagnostics of the volatility surface models. Web developers and API consumers may use this purely as a reference.
+        </div>
+
+        <div class="section-box">
+            <h2>1. CORE MODEL COMPARISONS</h2>
+            <p>A comparison between SVI (Stochastic Volatility Inspired) and SSVI (Surface Stochastic Volatility Inspired) modeling frameworks:</p>
+            <table>
+                <tr>
+                    <th>DIMENSION</th>
+                    <th>SVI (STOCHASTIC VOLATILITY INSPIRED)</th>
+                    <th>SSVI (SURFACE STOCHASTIC VOLATILITY INSPIRED)</th>
+                </tr>
+                <tr>
+                    <td class="highlight">MARKET FIT CAPABILITY</td>
+                    <td><strong>EXTREMELY HIGH.</strong> Calibrates each time slice independently. Has massive degrees of freedom, easily hitting all single-maturity market quotes.</td>
+                    <td><strong>MEDIUM-HIGH.</strong> Uses a global fit to maintain arbitrage-free constraints across the entire surface, sacrificing minor single-point precision for mathematical stability.</td>
+                </tr>
+                <tr>
+                    <td class="highlight">SURFACE SMOOTHNESS</td>
+                    <td><strong>POOR (Time Dimension).</strong> Only smooth across strikes. Parameters for different maturities are independently interpolated, often causing "kinks" or non-smooth jumps across time.</td>
+                    <td><strong>PERFECTLY SMOOTH.</strong> Defined by a single 3D mathematical equation. Guarantees absolute smoothness with no discontinuities across both time and strike dimensions.</td>
+                </tr>
+                <tr>
+                    <td class="highlight">PARAMETER COUNT</td>
+                    <td><strong>MASSIVE.</strong> 5 independent parameters (a, b, ρ, m, σ) for EVERY single maturity date slice.</td>
+                    <td><strong>MINIMAL.</strong> Relies on only 3 global parameters (ρ, η, γ) coupled with an At-The-Money (ATM) variance backbone.</td>
+                </tr>
+                <tr>
+                    <td class="highlight">ARBITRAGE-FREE GUARANTEE</td>
+                    <td><strong>NO GUARANTEE.</strong> Prone to generating "Calendar Arbitrage" or "Butterfly Arbitrage", causing Local Volatility to collapse into NaNs.</td>
+                    <td><strong>ABSOLUTE GUARANTEE.</strong> Strictly adheres to Gatheral's arbitrage-free mathematical limits (e.g., η(1+|ρ|) ≤ 2), ensuring stability in Monte Carlo and PDE engines.</td>
+                </tr>
+                <tr>
+                    <td class="highlight">OPTIMAL USE CASE</td>
+                    <td><strong>OPTIONS MARKET MAKING.</strong> Essential for quoting precise bid/ask spreads on the current order book.</td>
+                    <td><strong>STRUCTURED PRODUCTS PRICING.</strong> Crucial for products like Phoenix Autocalls requiring 5-year continuous path simulations where engine stability is paramount.</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section-box">
+            <h2>2. DIAGNOSING FITTING ISSUES & ARBITRAGE</h2>
+            <p>When reviewing Volatility Surface or Local Volatility charts, the following visual artifacts indicate severe model calibration failures. SSVI was implemented explicitly to cure these SVI deficiencies.</p>
+            
+            <ul>
+                <li><span class="highlight">1. BUTTERFLY ARBITRAGE (Local Volatility "Craters" / NaNs)</span>
+                    <br><strong>SVI Flaw:</strong> When the optimizer pushes parameter <em>b</em> too high or <em>ρ</em> becomes too extreme, the Probability Density Function (PDF) of the option mathematically drops below zero.
+                    <br><strong>Visual Artifact:</strong> The local volatility surface suddenly crashes to zero in deep out-of-the-money (OTM) regions, often throwing NaN engine errors.
+                    <br><strong>SSVI Solution:</strong> Completely eradicated via strict inequality constraints: η(1+|ρ|) ≤ 2.
+                </li>
+                <br>
+                <li><span class="highlight">2. CALENDAR ARBITRAGE (Crossing Volatility Smiles)</span>
+                    <br><strong>SVI Flaw:</strong> Because time slices are calibrated independently, the total variance of a 6-month option at extreme OTM strikes can mathematically become "less" than a 3-month option. Physically, this implies time flowing backwards.
+                    <br><strong>Visual Artifact:</strong> When plotting different maturity smiles on a 2D plane, the curves cross each other. In Dupire's Local Vol equation, the time derivative (∂w/∂t) becomes negative and crashes the solver.
+                    <br><strong>SSVI Solution:</strong> The mathematical structure of SSVI guarantees that total variance strictly increases over time, making it physically impossible for curves to cross.
+                </li>
+                <br>
+                <li><span class="highlight">3. THE EXTRAPOLATION FLATLINE</span>
+                    <br><strong>SVI Flaw:</strong> For ultra-short (e.g., < 1 week) or ultra-long maturities, SVI often relies on "Flat Extrapolation", freezing the nearest calibrated parameters.
+                    <br><strong>Visual Artifact:</strong> The ultra-short term smile looks identical to the 1-month smile, which incorrectly forces short-term local volatility to drop instantly to zero.
+                    <br><strong>SSVI Solution:</strong> As the ATM variance backbone (θ_t) approaches zero, the model mathematically forces the tail slopes to become extremely steep, perfectly replicating the high-skew nature of real-world short-term options.
+                </li>
+            </ul>
+        </div>
+
+    </div>
+</body>
+</html>

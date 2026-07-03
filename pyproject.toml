@@ -1,0 +1,12 @@
+[project]
+name = "django-google-cloud-run"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=6.0.6",
+    "gunicorn>=26.0.0",
+    "python-dotenv>=1.2.2",
+    "whitenoise>=6.12.0",
+]

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ELNs DOCS</title>
+    <style>
+        body { background-color: #000000; color: #FF9900; font-family: 'Consolas', 'Courier New', monospace; margin: 0; padding: 20px; text-transform: uppercase; }
+        h1, h2, h3 { color: #FFFFFF; border-bottom: 1px solid #333; padding-bottom: 5px; text-transform: uppercase; margin-top: 30px; }
+        a { color: #00FF00; text-decoration: none; }
+        a:hover { color: #FFFFFF; background-color: #00FF00; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }
+        th, td { border: 1px solid #333; padding: 10px; text-align: left; }
+        th { color: #FFFFFF; background-color: #111; }
+        .terminal-header { display: flex; justify-content: space-between; margin-bottom: 20px; color: #00FF00; border-bottom: 2px solid #FF9900; padding-bottom: 10px; }
+        .section-box { border: 1px solid #333; padding: 15px; margin-bottom: 20px; }
+        .chart-placeholder { width: 100%; height: 300px; border: 1px dashed #00FF00; display: flex; align-items: center; justify-content: center; color: #00FF00; margin: 20px 0; background-color: #050505; }
+        .highlight { color: #00FF00; }
+        .alert { border: 1px solid #FF0000; padding: 10px; background-color: #330000; color: #FFFFFF; margin: 10px 0; }
+        ul { list-style-type: square; }
+        li { margin-bottom: 10px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="terminal-header">
+            <span>SYS: PRICING ENGINE / DOCS / STRUCTURED PRODUCTS</span>
+            <span>STATUS: ONLINE</span>
+        </div>
+
+        <h1>04. EQUITY LINKED NOTES (ELNs) DOCUMENTATION</h1>
+
+        <div class="section-box">
+            <h2>1. PRODUCT OVERVIEW (AUTOCALLS)</h2>
+            <p><strong>DEFINITION:</strong> Equity Linked Notes (ELNs) are hybrid structured products combining a fixed-income component (Zero-Coupon Bond) with an embedded exotic derivative. We focus on Yield Enhancement products like Phoenix and Eagle Autocalls.</p>
+            <p><strong>FINANCIAL DECOMPOSITION:</strong><br>
+            ELN = Zero-Coupon Bond (Provides principal) <br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; - Short Put Option (Downside risk sold by investor to fund high coupons) <br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; + Digital/Barrier Options (Coupon and Early Redemption triggers)</p>
+        </div>
+
+        <div class="section-box">
+            <h2>2. PRICING CALCULATOR INPUTS & SETTINGS</h2>
+            <ul>
+                <li><span class="highlight">MODEL SELECTION (BS vs HESTON):</span> 
+                    Standard ELN pricing relies on the <strong>Black-Scholes (BS)</strong> diffusion model. While the Heston model captures stochastic volatility, it drastically increases memory consumption and computation time. Given the robust volatility surface calibration, BS is the industry standard for these notes.
+                </li>
+                <li><span class="highlight">VOLATILITY SURFACE (SVI vs SSVI):</span>
+                    For Autocalls with long maturities and path dependency, <strong>SSVI (Surface Stochastic Volatility Inspired)</strong> is strictly mandated. SSVI guarantees a globally arbitrage-free surface (preventing calendar or butterfly arbitrage), ensuring no negative probabilities or engine crashes during deep OTM barrier evaluations. SVI should be restricted to short-term vanilla pricing.
+                </li>
+                <li><span class="highlight">RANDOM NUMBER GENERATOR:</span>
+                    Defaults to NumPy (pseudo-random). Quasi-Monte Carlo (Sobol sequence) can be selected for faster convergence, provided the number of paths is set to a power of 2 (e.g., 65,536).
+                </li>
+            </ul>
+        </div>
+
+        <div class="section-box">
+            <h2>3. QUANTITATIVE ENGINE: MONTE CARLO WORKFLOW</h2>
+            <p>To accurately capture the discrete observation dates and path-dependent nature of Autocall products, the engine employs Monte Carlo Simulation through the following sequence:</p>
+            <ul>
+                <li><span class="highlight">STEP 1: YIELD CURVE & DIVIDEND SETUP:</span> The system utilizes bootstrapping to construct a zero-coupon risk-free yield curve. Simultaneously, expected dividends are converted into a continuous dividend yield to be injected directly into the diffusion process.</li>
+                <li><span class="highlight">STEP 2: VOLATILITY SURFACE CALIBRATION:</span> Market option quotes are extracted and calibrated into the SSVI model. This ensures the engine accurately captures the volatility smile and term structure when generating paths.</li>
+                <li><span class="highlight">STEP 3: PATH GENERATION:</span> Euler Discretization is used to simulate the asset's future price paths. Under the risk-neutral measure, the drift is determined by the risk-free rate minus the continuous dividend yield. The standard configuration generates 50,000+ independent paths.</li>
+                <li><span class="highlight">STEP 4: PAYOFF EVALUATION:</span> For each simulated path, the engine sequentially evaluates the contractual observation dates:
+                    <br>&nbsp;&nbsp;&nbsp;&nbsp;- Did it breach the Autocall Barrier? (If yes, record exit time/payoff, terminate path)
+                    <br>&nbsp;&nbsp;&nbsp;&nbsp;- Did it breach the Coupon Barrier? (Only applicable for Phoenix structures)
+                    <br>&nbsp;&nbsp;&nbsp;&nbsp;- If held to maturity, did it breach the Capital/Put Barrier?
+                </li>
+                <li><span class="highlight">STEP 5: DISCOUNTING & EXPECTED NPV:</span> The final cash flows derived from each path are discounted back to the valuation date using the yield curve from Step 1. The average of these discounted values represents the product's Fair Value.</li>
+            </ul>
+        </div>
+
+        <div class="section-box">
+            <h2>4. DUAL VALUATION WORKFLOWS</h2>
+            <p>The system supports two distinct modes tailored for different financial teams (Structuring vs. Trading/Control).</p>
+            <table>
+                <tr>
+                    <th>WORKFLOW MODE</th>
+                    <th>TARGET AUDIENCE</th>
+                    <th>MECHANICS & PURPOSE</th>
+                </tr>
+                <tr>
+                    <td class="highlight">SOLVING MODE (ORIGINATION)</td>
+                    <td>Structuring / Origination Desk</td>
+                    <td><strong>Goal:</strong> Determine the coupon to pitch to clients.<br><strong>Action:</strong> Given a target issue price (usually 100% / Par), the engine uses a bisection root-finding algorithm over the simulation paths to solve for the <em>Implied Coupon Rate</em>.</td>
+                </tr>
+                <tr>
+                    <td class="highlight">PRICING MODE (SECONDARY MTM)</td>
+                    <td>Trading / Product Control</td>
+                    <td><strong>Goal:</strong> Mark-to-Market (MTM) existing portfolio.<br><strong>Action:</strong> Given the contractual fixed coupon rate, calculate the current Fair Value (NPV). Crucial for daily P&L and risk exposure.</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section-box">
+            <h2>5. KEY PRODUCT PARAMETERS (PHOENIX / EAGLE)</h2>
+            <div class="chart-placeholder">
+                [ PLACEHOLDER: MONTE CARLO SIMULATION PATHS VS BARRIERS CHART ]
+            </div>
+            <ul>
+                <li><span class="highlight">MATURITY (T):</span> Typically 1 to 5 years. Determines the length of the Monte Carlo simulation.</li>
+                <li><span class="highlight">OBSERVATION FREQUENCY:</span> Discrete dates (e.g., Semi-Annual, Annual) to evaluate barriers.</li>
+                <li><span class="highlight">CAPITAL BARRIER (KNOCK-IN):</span> Downside protection level (e.g., 60%). If spot drops below this at maturity, the investor suffers capital loss 1-for-1 with the asset.</li>
+                <li><span class="highlight">AUTOCALL BARRIER:</span> Early redemption level (e.g., 100%). If spot is above this on an observation date, the note matures early at par + coupon.</li>
+                <li><span class="highlight">COUPON BARRIER (PHOENIX ONLY):</span> Memory/conditional trigger (e.g., 80%). If spot > 80%, coupon is paid. <em>Note: Eagle products typically pay unconditional fixed coupons.</em></li>
+            </ul>
+        </div>
+
+        <div class="section-box">
+            <h2>6. ASSUMPTIONS & LIMITATIONS</h2>
+            <ul>
+                <li><span class="highlight">SINGLE ASSET DYNAMICS:</span> This model focuses solely on single-underlying ELNs. It does not calculate correlation matrices and is not applicable for multi-asset basket structures (e.g., Worst-Of or Best-Of).</li>
+                <li><span class="highlight">DETERMINISTIC INTEREST RATES:</span> Assumes risk-free rates follow a static bootstrapped curve without a stochastic rate model (like Hull-White). For extremely long-dated products, this ignores the second-order effects of rate volatility on discount factors.</li>
+                <li><span class="highlight">CONTINUOUS DIVIDEND YIELD:</span> Assumes dividends are paid out as a continuous yield rather than discrete absolute jumps. This may introduce minor pricing deviations for short-term valuations of stocks nearing ex-dividend dates or high-yield equities.</li>
+            </ul>
+        </div>
+
+        <div class="section-box">
+            <h2>7. RISK MANAGEMENT & GREEKS</h2>
+            <ul>
+                <li><span class="highlight">CALCULATION METHODOLOGY:</span> The system utilizes the Bump-and-Reval (Finite Difference) method to calculate all risk sensitivities (Greeks). Due to the discontinuous digital and barrier features of ELNs, finite difference provides relatively stable risk metrics compared to analytical derivatives.</li>
+                <li><span class="highlight">PERFORMANCE IMPACT:</span> Because the full Monte Carlo simulation must be rerun for up/down shifts in Spot (Delta, Gamma), Volatility (Vega), and Rates (Rho), calculating Greeks takes several times longer than a single NPV valuation.</li>
+                <li><span class="highlight">GAMMA CLIFF / PIN RISK:</span> As maturity approaches and the spot price hovers near the Capital Barrier, the Bump-and-Reval Delta and Gamma will exhibit extreme, volatile jumps. The risk control team must carefully monitor this non-linear "cliff" characteristic to avoid excessive re-hedging costs.</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{% extends 'core/base.html' %}
+
+{% block content %}
+<h1>AUTHENTICATION REQUIRED</h1>
+
+<p>SYSTEM ACCESS IS RESTRICTED.</p>
+<p>PLEASE ENTER CLEARANCE CODE:</p>
+
+{% if error %}
+<p style="color: red;">{{ error }}</p>
+{% endif %}
+
+<form method="POST" action="{% url 'login' %}">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.GET.next }}">
+    <div class="form-group">
+        <label for="password">> CODE:</label>
+        <input type="password" id="password" name="password" required autofocus>
+    </div>
+    <button type="submit">[ AUTHENTICATE ]</button>
+</form>
+{% endblock %}
+
