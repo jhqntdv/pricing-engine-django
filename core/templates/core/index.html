@@ -1,63 +1,76 @@
 {% extends 'core/base.html' %}
+{% load static %}
 
 {% block content %}
-<h1>SYSTEM DOCUMENTATION</h1>
+<div style="display: flex; justify-content: space-between; align-items: baseline;">
+    <h1>SYSTEM DOCUMENTATION & GOVERNANCE</h1>
+</div>
 
 <div style="margin-bottom: 30px; border: 1px solid #333; padding: 15px;">
     <h2>INDEX DIRECTORY</h2>
     <ul>
-        <li><a href="#docs-overview">01. SYSTEM OVERVIEW</a></li>
-        <li><a href="#docs-options">02. OPTIONS DOCUMENTATION</a></li>
-        <li><a href="#docs-exotics">03. EXOTICS DOCUMENTATION</a></li>
-        <li><a href="#docs-elns">04. EQUITY LINKED NOTES (ELNs) DOCUMENTATION</a></li>
+        <li><a href="#docs-overview">01. SYSTEM OVERVIEW & MODEL RISK</a></li>
+        <li><a href="#docs-options">02. VANILLA OPTIONS VALUATION</a></li>
+        <li><a href="#docs-exotics">03. EXOTICS & PATH-DEPENDENT PRICING</a></li>
+        <li><a href="#docs-elns">04. STRUCTURED PRODUCTS (ELNs)</a></li>
     </ul>
 </div>
 
 <div id="docs-overview" style="margin-bottom: 40px; border-bottom: 1px dashed #333; padding-bottom: 20px;">
-    <h2>01. SYSTEM OVERVIEW</h2>
+    <h2>01. SYSTEM OVERVIEW & MODEL RISK</h2>
     <p>
-        THIS TERMINAL PROVIDES ACCESS TO THE PROPRIETARY PRICING ENGINE.<br>
-        STATUS: [ ONLINE ]
+        <strong>STATUS:</strong> <span style="color: #00FF00;">[ ONLINE ]</span><br>
+        <strong>COMPLIANCE:</strong> ALIGNED WITH ENTERPRISE VALUATION CONTROL POLICIES
     </p>
+    <p>
+        This platform serves as the centralized Quantitative Pricing Engine for equity derivatives and structured products. Designed under the Model Risk Management (MRM) framework, the engine ensures pricing transparency, reproducibility, and consistency across trading and control functions. By integrating market-calibrated volatility surfaces (SVI/SSVI) and stochastic models (Black-Scholes, Heston), the system provides Fair Value (NPV), risk sensitivities (Greeks), and explicit 95% Confidence Intervals for simulation-based pricing. This allows Valuation Control Groups (VCG) and internal audit to directly observe and quantify valuation uncertainty.
+    </p>
+    <a href="{% static 'volatility_surface_doc.html' %}" target="_blank">> [ DOC: VOLATILITY SURFACE CALIBRATION METHODOLOGY ]</a>
 </div>
 
 <div id="docs-options" style="margin-bottom: 40px; border-bottom: 1px dashed #333; padding-bottom: 20px;">
-    <h2>02. OPTIONS DOCUMENTATION</h2>
+    <h2>02. VANILLA OPTIONS VALUATION</h2>
     <p>
-        <strong>MODEL:</strong> BLACK-SCHOLES / LOCAL VOLATILITY<br>
-        <strong>DESCRIPTION:</strong> Standard European and American options pricing engine.
+        <strong>PRIMARY MODELS:</strong> BLACK-SCHOLES / LOCAL VOLATILITY<br>
+        <strong>RISK IMPACT:</strong> DELTA/VEGA HEDGING ACCURACY & PNL ATTRIBUTION
     </p>
     <p>
-        The options calculator computes NPV and standard Greeks (Delta, Gamma, Vega).
-        Ensure the underlying ticker is valid and the spot price reflects current market conditions.
+        The Vanilla Options module computes European option premiums and associated Greeks. A critical governance requirement is the prevention of arbitrage; hence, the engine utilizes SVI (Stochastic Volatility Inspired) surface parameterization. This ensures an arbitrage-free interpolation across strikes and maturities, strictly eliminating negative calendar spreads or butterfly arbitrages. Accurate volatility surface calibration directly impacts the robustness of the Delta and Vega hedging ratios, thereby minimizing unhedged exposures and unexpected PnL swings during market shocks.
     </p>
-    <a href="{% url 'options' %}">> PROCEED TO OPTIONS CALCULATOR</a>
+    <div style="margin-bottom: 15px;">
+        <a href="{% static 'vanilla_options_doc.html' %}" target="_blank" style="margin-right: 20px;">> [ DOC: OPTIONS METHODOLOGY & INPUT SPECS ]</a>
+    </div>
+    <a href="{% url 'options' %}" style="font-weight: bold;">>> PROCEED TO OPTIONS CALCULATOR</a>
 </div>
 
 <div id="docs-exotics" style="margin-bottom: 40px; border-bottom: 1px dashed #333; padding-bottom: 20px;">
-    <h2>03. EXOTICS DOCUMENTATION</h2>
+    <h2>03. EXOTICS & PATH-DEPENDENT PRICING</h2>
     <p>
-        <strong>MODEL:</strong> MONTE CARLO SIMULATION<br>
-        <strong>DESCRIPTION:</strong> Pricing for path-dependent and barrier options.
+        <strong>PRIMARY MODELS:</strong> MONTE CARLO SIMULATION (LONGSTAFF-SCHWARTZ)<br>
+        <strong>RISK IMPACT:</strong> BARRIER TOUCH PROBABILITIES & SIMULATION NOISE RESERVES
     </p>
     <p>
-        The exotics engine relies on the SSVI volatility surface for accurate barrier touch probabilities.
-        Computations may take slightly longer due to the required simulation paths.
+        Pricing path-dependent derivatives (e.g., Barrier and American Options) introduces significant non-linear risks. This module employs Monte Carlo simulations utilizing 10,000 paths and 252 time-steps as the regulatory baseline, alongside the Longstaff-Schwartz algorithm for early exercise valuation. The SSVI (Surface SVI) framework is heavily recommended to preserve no-arbitrage conditions across time, which is paramount for accurately estimating barrier-touch probabilities. Furthermore, the engine explicitly outputs the standard deviation and 95% Confidence Intervals of the Monte Carlo estimator. This transparency empowers risk controllers to assess simulation noise and mandate appropriate valuation reserves (Bid-Offer / Model Risk Reserves).
     </p>
-    <a href="{% url 'exotics' %}">> PROCEED TO EXOTICS CALCULATOR</a>
+    <div style="margin-bottom: 15px;">
+        <a href="{% static 'exotics_doc.html' %}" target="_blank" style="margin-right: 20px;">> [ DOC: EXOTICS METHODOLOGY & INPUT SPECS ]</a>
+    </div>
+    <a href="{% url 'exotics' %}" style="font-weight: bold;">>> PROCEED TO EXOTICS CALCULATOR</a>
 </div>
 
 <div id="docs-elns" style="margin-bottom: 40px; border-bottom: 1px dashed #333; padding-bottom: 20px;">
-    <h2>04. EQUITY LINKED NOTES (ELNs) DOCUMENTATION</h2>
+    <h2>04. STRUCTURED PRODUCTS (ELNs)</h2>
     <p>
-        <strong>MODEL:</strong> HYBRID FIXED INCOME / EQUITY<br>
-        <strong>DESCRIPTION:</strong> Structured product issuance pricing.
+        <strong>PRIMARY MODELS:</strong> HESTON STOCHASTIC VOLATILITY / CALLABLE MC<br>
+        <strong>RISK IMPACT:</strong> ISSUANCE FAIR VALUE & IMPLIED YIELD BENCHMARKING
     </p>
     <p>
-        Decomposes the ELN into a zero-coupon bond and an embedded derivative (typically a call option or basket option).
-        Yields the fair issue price and component values.
+        The Equity-Linked Notes (ELNs) module provides pricing and yield-solving capabilities for complex Autocallable structures (e.g., Phoenix, Eagle). Given the long-dated maturity and complex payoff contingencies (Autocall, Coupon, and Capital Protection barriers), the engine utilizes the Heston Stochastic Volatility model to account for volatility skew and term structure dynamics. For Independent Price Verification (IPV), the engine features a "Solving Mode" that derives the implied coupon yield from the product's par value. This allows risk managers to benchmark internal issuance yields against secondary market observable levels, ensuring fair pricing and compliance with best execution policies.
     </p>
-    <a href="{% url 'elns' %}">> PROCEED TO ELNS CALCULATOR</a>
+    <div style="margin-bottom: 15px;">
+        <a href="{% static 'elns_doc.html' %}" target="_blank" style="margin-right: 20px;">> [ DOC: ELN METHODOLOGY & INPUT SPECS ]</a>
+    </div>
+    <a href="{% url 'elns' %}" style="font-weight: bold;">>> PROCEED TO ELNS CALCULATOR</a>
 </div>
 
 {% endblock %}

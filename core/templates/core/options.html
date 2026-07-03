@@ -14,40 +14,150 @@
 
 <div style="border: 1px solid #333; padding: 20px; margin-top: 20px;">
     <h2>[ INPUT PARAMETERS ]</h2>
-    <form method="POST" action="{% url 'options' %}">
+    <form id="calc-form">
         {% csrf_token %}
         <div style="display: flex; gap: 20px; flex-wrap: wrap;">
             <div class="form-group">
+                <label for="product_type">> PRODUCT TYPE:</label><br>
+                <select id="product_type" name="product_type" {% if not is_auth %}disabled{% endif %}>
+                    <option value="EuropeanCallOption">European Call Option</option>
+                    <option value="EuropeanPutOption">European Put Option</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label for="underlying">> UNDERLYING:</label><br>
-                <input type="text" id="underlying" name="underlying" value="SPX Index" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+                <select id="underlying" name="underlying" {% if not is_auth %}disabled{% endif %}>
+                    <option value="SPX">SPX</option>
+                    <option value="AAPL">AAPL</option>
+                </select>
             </div>
             <div class="form-group">
-                <label for="spot">> SPOT PRICE:</label><br>
-                <input type="text" id="spot" name="spot" value="5000.00" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+                <label for="model">> MODEL:</label><br>
+                <select id="model" name="model" {% if not is_auth %}disabled{% endif %}>
+                    <option value="BLACK_SCHOLES">Black-Scholes</option>
+                    <option value="HESTON">Heston</option>
+                </select>
             </div>
             <div class="form-group">
-                <label for="strike">> STRIKE (%):</label><br>
-                <input type="text" id="strike" name="strike" value="100.00" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+                <label for="volatility_surface">> VOLATILITY SURFACE:</label><br>
+                <select id="volatility_surface" name="volatility_surface" {% if not is_auth %}disabled{% endif %}>
+                    <option value="SVI">SVI</option>
+                    <option value="SSVI">SSVI</option>
+                    <option value="LOCAL">Local Volatility</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="strike_pct">> STRIKE (%):</label><br>
+                <input type="number" step="any" id="strike_pct" name="strike_pct" value="100.00" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
             </div>
             <div class="form-group">
                 <label for="maturity">> MATURITY (Y):</label><br>
-                <input type="text" id="maturity" name="maturity" value="1.0" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+                <input type="number" step="any" id="maturity" name="maturity" value="1.0" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
             </div>
         </div>
-        <button type="submit" style="margin-top: 15px; {% if not is_auth %}opacity: 0.5; cursor: not-allowed;{% endif %}" {% if not is_auth %}disabled{% endif %}>[ RUN CALCULATION ]</button>
+        <button type="submit" id="submit-btn" style="margin-top: 15px; {% if not is_auth %}opacity: 0.5; cursor: not-allowed;{% endif %}" {% if not is_auth %}disabled{% endif %}>[ RUN CALCULATION ]</button>
     </form>
 </div>
 
 <div style="border: 1px solid #333; padding: 20px; margin-top: 20px;">
     <h2>[ RESULTS OUTPUT ]</h2>
-    <p>{% if is_auth %}AWAITING EXECUTION...{% else %}SYSTEM LOCKED.{% endif %}</p>
-    <table style="width: 50%;">
+    <p id="error-msg" class="error" style="display: none;"></p>
+    <p id="status-msg">{% if is_auth %}AWAITING EXECUTION...{% else %}SYSTEM LOCKED.{% endif %}</p>
+    <table style="width: 100%;">
         <tr><th>METRIC</th><th>VALUE</th></tr>
-        <tr><td>PRICE (NPV)</td><td>---</td></tr>
-        <tr><td>DELTA</td><td>---</td></tr>
-        <tr><td>GAMMA</td><td>---</td></tr>
-        <tr><td>VEGA</td><td>---</td></tr>
+        <tr><td>PRICE (NPV)</td><td id="res-price">---</td></tr>
+        <tr><td>DELTA</td><td id="res-delta">---</td></tr>
+        <tr><td>GAMMA</td><td id="res-gamma">---</td></tr>
+        <tr><td>VEGA</td><td id="res-vega">---</td></tr>
+        <tr><td>THETA</td><td id="res-theta">---</td></tr>
+        <tr><td>RHO</td><td id="res-rho">---</td></tr>
+        <tr><td>95% CI LOWER</td><td id="res-ci-lower">---</td></tr>
+        <tr><td>95% CI UPPER</td><td id="res-ci-upper">---</td></tr>
+        <tr><td>STD DEV</td><td id="res-std-dev">---</td></tr>
     </table>
 </div>
 
+<script>
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    const form = document.getElementById('calc-form');
+    const overlay = document.getElementById('overlay');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorMsg = document.getElementById('error-msg');
+    const statusMsg = document.getElementById('status-msg');
+
+    function buildPayload() {
+        return {
+            category: "vanilla",
+            product_type: document.getElementById('product_type').value,
+            underlying: document.getElementById('underlying').value,
+            model: document.getElementById('model').value,
+            volatility_surface: document.getElementById('volatility_surface').value,
+            maturity: parseFloat(document.getElementById('maturity').value),
+            strike_pct: parseFloat(document.getElementById('strike_pct').value)
+        };
+    }
+
+    function renderResults(data) {
+        document.getElementById('res-price').innerHTML = data.price !== null ? `<span class="result-value">${data.price}</span>` : '---';
+        if (data.greeks) {
+            document.getElementById('res-delta').innerHTML = `<span class="result-value">${data.greeks.delta}</span>`;
+            document.getElementById('res-gamma').innerHTML = `<span class="result-value">${data.greeks.gamma}</span>`;
+            document.getElementById('res-vega').innerHTML = `<span class="result-value">${data.greeks.vega}</span>`;
+            document.getElementById('res-theta').innerHTML = `<span class="result-value">${data.greeks.theta}</span>`;
+            document.getElementById('res-rho').innerHTML = `<span class="result-value">${data.greeks.rho}</span>`;
+        }
+        document.getElementById('res-ci-lower').innerHTML = data.ci_lower !== null ? `<span class="result-value">${data.ci_lower}</span>` : '---';
+        document.getElementById('res-ci-upper').innerHTML = data.ci_upper !== null ? `<span class="result-value">${data.ci_upper}</span>` : '---';
+        document.getElementById('res-std-dev').innerHTML = data.std_dev !== null ? `<span class="result-value">${data.std_dev}</span>` : '---';
+    }
+
+    if(form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            submitBtn.disabled = true;
+            overlay.style.display = 'flex';
+            errorMsg.style.display = 'none';
+            statusMsg.style.display = 'none';
+            
+            try {
+                const resp = await fetch('/api/calculate/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: JSON.stringify(buildPayload()),
+                });
+                const responseData = await resp.json();
+                
+                if (resp.ok && responseData.status === 'success') {
+                    renderResults(responseData.data);
+                } else {
+                    errorMsg.textContent = responseData.message || "An error occurred";
+                    errorMsg.style.display = 'block';
+                }
+            } catch (err) {
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                overlay.style.display = 'none';
+            }
+        });
+    }
+</script>
 {% endblock %}

@@ -14,36 +14,273 @@
 
 <div style="border: 1px solid #333; padding: 20px; margin-top: 20px;">
     <h2>[ INPUT PARAMETERS ]</h2>
-    <form method="POST" action="{% url 'elns' %}">
+    <form id="calc-form">
         {% csrf_token %}
         <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-            <div class="form-group">
-                <label for="underlying">> BASKET / INDEX:</label><br>
-                <input type="text" id="underlying" name="underlying" value="SPX, NDX, RTY" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+            <div class="form-group" style="width: 100%;">
+                <label>> OPERATION MODE:</label><br>
+                <div style="display: flex; gap: 15px; margin-top: 5px;">
+                    <label style="cursor: pointer;">
+                        <input type="radio" name="solve_yield" value="false" checked {% if not is_auth %}disabled{% endif %}>
+                        PRICING MODE
+                    </label>
+                    <label style="cursor: pointer;">
+                        <input type="radio" name="solve_yield" value="true" {% if not is_auth %}disabled{% endif %}>
+                        SOLVING MODE (Solve for Yield)
+                    </label>
+                </div>
             </div>
             <div class="form-group">
-                <label for="participation">> PARTICIPATION (%):</label><br>
-                <input type="text" id="participation" name="participation" value="100.00" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+                <label for="product_type">> PRODUCT TYPE:</label><br>
+                <select id="product_type" name="product_type" {% if not is_auth %}disabled{% endif %}>
+                    <option value="Phoenix">Phoenix</option>
+                    <option value="Eagle">Eagle</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="underlying">> UNDERLYING:</label><br>
+                <select id="underlying" name="underlying" {% if not is_auth %}disabled{% endif %}>
+                    <option value="SPX">SPX</option>
+                    <option value="AAPL">AAPL</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="model">> MODEL:</label><br>
+                <select id="model" name="model" {% if not is_auth %}disabled{% endif %}>
+                    <option value="BLACK_SCHOLES">Black-Scholes</option>
+                    <option value="HESTON">Heston</option>
+                </select>
+                <div id="heston-warning" style="color: #FF9900; font-size: 0.8em; margin-top: 5px; display: none;">Heston model is significantly slower (~6x).</div>
+            </div>
+            <div class="form-group">
+                <label for="volatility_surface">> VOLATILITY SURFACE:</label><br>
+                <select id="volatility_surface" name="volatility_surface" {% if not is_auth %}disabled{% endif %}>
+                    <option value="SSVI">SSVI</option>
+                    <option value="SVI">SVI</option>
+                    <option value="LOCAL">Local Volatility</option>
+                </select>
+                <div id="svi-warning" style="color: #FF9900; font-size: 0.8em; margin-top: 5px; display: none;">Warning: SVI is not recommended for ELNs.</div>
             </div>
             <div class="form-group">
                 <label for="maturity">> MATURITY (Y):</label><br>
-                <input type="text" id="maturity" name="maturity" value="3.0" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+                <input type="number" step="any" id="maturity" name="maturity" value="1.0" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+            </div>
+            <div class="form-group">
+                <label for="observation_frequency">> OBS. FREQUENCY:</label><br>
+                <select id="observation_frequency" name="observation_frequency" {% if not is_auth %}disabled{% endif %}>
+                    <option value="ANNUAL">Annual</option>
+                    <option value="SEMIANNUAL">Semi-Annual</option>
+                    <option value="QUARTERLY">Quarterly</option>
+                    <option value="MONTHLY">Monthly</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="capital_barrier">> CAPITAL BARRIER (%):</label><br>
+                <input type="number" step="any" id="capital_barrier" name="capital_barrier" value="70.00" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+            </div>
+            <div class="form-group">
+                <label for="autocall_barrier">> AUTOCALL BARRIER (%):</label><br>
+                <input type="number" step="any" id="autocall_barrier" name="autocall_barrier" value="100.00" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+            </div>
+            <div class="form-group" id="coupon-barrier-group">
+                <label for="coupon_barrier">> COUPON BARRIER (%):</label><br>
+                <input type="number" step="any" id="coupon_barrier" name="coupon_barrier" value="80.00" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+            </div>
+            <div class="form-group">
+                <label for="coupon_rate">> COUPON RATE (%):</label><br>
+                <input type="number" step="any" id="coupon_rate" name="coupon_rate" value="8.00" {% if not is_auth %}disabled style="opacity: 0.5; color: #777;"{% endif %}>
+            </div>
+            
+            <div class="form-group">
+                <label>> FLAGS:</label><br>
+                <div style="display: flex; gap: 15px; margin-top: 5px;">
+                    <label style="cursor: pointer;">
+                        <input type="checkbox" id="is_security" name="is_security" {% if not is_auth %}disabled{% endif %}>
+                        IS SECURITY
+                    </label>
+                    <label style="cursor: pointer;">
+                        <input type="checkbox" id="is_plus" name="is_plus" {% if not is_auth %}disabled{% endif %}>
+                        IS PLUS
+                    </label>
+                </div>
             </div>
         </div>
-        <button type="submit" style="margin-top: 15px; {% if not is_auth %}opacity: 0.5; cursor: not-allowed;{% endif %}" {% if not is_auth %}disabled{% endif %}>[ RUN CALCULATION ]</button>
+        <button type="submit" id="submit-btn" style="margin-top: 15px; {% if not is_auth %}opacity: 0.5; cursor: not-allowed;{% endif %}" {% if not is_auth %}disabled{% endif %}>[ RUN CALCULATION ]</button>
     </form>
 </div>
 
 <div style="border: 1px solid #333; padding: 20px; margin-top: 20px;">
     <h2>[ RESULTS OUTPUT ]</h2>
-    <p>{% if is_auth %}AWAITING EXECUTION...{% else %}SYSTEM LOCKED.{% endif %}</p>
-    <table style="width: 50%;">
+    <p id="error-msg" class="error" style="display: none;"></p>
+    <p id="status-msg">{% if is_auth %}AWAITING EXECUTION...{% else %}SYSTEM LOCKED.{% endif %}</p>
+    <table style="width: 100%;">
         <tr><th>METRIC</th><th>VALUE</th></tr>
-        <tr><td>NOTE ISSUE PRICE</td><td>---</td></tr>
-        <tr><td>EXPECTED PAYOFF</td><td>---</td></tr>
-        <tr><td>BOND COMPONENT VALUE</td><td>---</td></tr>
-        <tr><td>OPTION COMPONENT VALUE</td><td>---</td></tr>
+        <tr><td>PRICE (NPV)</td><td id="res-price">---</td></tr>
+        <tr><td>IMPLIED YIELD (%)</td><td id="res-yield">---</td></tr>
+        <tr><td>DELTA</td><td id="res-delta">---</td></tr>
+        <tr><td>GAMMA</td><td id="res-gamma">---</td></tr>
+        <tr><td>VEGA</td><td id="res-vega">---</td></tr>
+        <tr><td>THETA</td><td id="res-theta">---</td></tr>
+        <tr><td>RHO</td><td id="res-rho">---</td></tr>
+        <tr><td>95% CI LOWER</td><td id="res-ci-lower">---</td></tr>
+        <tr><td>95% CI UPPER</td><td id="res-ci-upper">---</td></tr>
+        <tr><td>STD DEV</td><td id="res-std-dev">---</td></tr>
     </table>
 </div>
 
+<script>
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    const form = document.getElementById('calc-form');
+    const overlay = document.getElementById('overlay');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorMsg = document.getElementById('error-msg');
+    const statusMsg = document.getElementById('status-msg');
+    const productTypeSelect = document.getElementById('product_type');
+    const couponBarrierGroup = document.getElementById('coupon-barrier-group');
+    const solveYieldRadios = document.getElementsByName('solve_yield');
+    const couponRateInput = document.getElementById('coupon_rate');
+    const modelSelect = document.getElementById('model');
+    const hestonWarning = document.getElementById('heston-warning');
+    const volSurfaceSelect = document.getElementById('volatility_surface');
+    const sviWarning = document.getElementById('svi-warning');
+
+    function toggleFields() {
+        if (productTypeSelect.value === 'Eagle') {
+            couponBarrierGroup.style.display = 'none';
+        } else {
+            couponBarrierGroup.style.display = 'block';
+        }
+
+        let isSolving = false;
+        for (let radio of solveYieldRadios) {
+            if (radio.checked && radio.value === 'true') {
+                isSolving = true;
+            }
+        }
+
+        if (isSolving) {
+            couponRateInput.value = '0.00';
+            couponRateInput.disabled = true;
+            couponRateInput.style.opacity = '0.5';
+        } else {
+            couponRateInput.disabled = false;
+            couponRateInput.style.opacity = '1';
+        }
+
+        if (modelSelect.value === 'HESTON') {
+            hestonWarning.style.display = 'block';
+        } else {
+            hestonWarning.style.display = 'none';
+        }
+
+        if (volSurfaceSelect.value === 'SVI') {
+            sviWarning.style.display = 'block';
+        } else {
+            sviWarning.style.display = 'none';
+        }
+    }
+
+    if (form) {
+        productTypeSelect.addEventListener('change', toggleFields);
+        for (let radio of solveYieldRadios) {
+            radio.addEventListener('change', toggleFields);
+        }
+        modelSelect.addEventListener('change', toggleFields);
+        volSurfaceSelect.addEventListener('change', toggleFields);
+        toggleFields();
+    }
+
+    function buildPayload() {
+        let solveYield = false;
+        for (let radio of solveYieldRadios) {
+            if (radio.checked && radio.value === 'true') solveYield = true;
+        }
+
+        const payload = {
+            category: "eln",
+            product_type: document.getElementById('product_type').value,
+            underlying: document.getElementById('underlying').value,
+            model: document.getElementById('model').value,
+            volatility_surface: document.getElementById('volatility_surface').value,
+            maturity: parseFloat(document.getElementById('maturity').value),
+            observation_frequency: document.getElementById('observation_frequency').value,
+            capital_barrier: parseFloat(document.getElementById('capital_barrier').value),
+            autocall_barrier: parseFloat(document.getElementById('autocall_barrier').value),
+            coupon_rate: solveYield ? 0.0 : parseFloat(document.getElementById('coupon_rate').value),
+            is_security: document.getElementById('is_security').checked,
+            is_plus: document.getElementById('is_plus').checked,
+            solve_yield: solveYield
+        };
+        
+        if (payload.product_type === 'Phoenix') {
+            payload.coupon_barrier = parseFloat(document.getElementById('coupon_barrier').value);
+        }
+        
+        return payload;
+    }
+
+    function renderResults(data) {
+        document.getElementById('res-price').innerHTML = data.price !== null ? `<span class="result-value">${data.price}</span>` : '---';
+        document.getElementById('res-yield').innerHTML = data.coupon_callable !== null ? `<span class="result-value">${data.coupon_callable}</span>` : '---';
+        if (data.greeks) {
+            document.getElementById('res-delta').innerHTML = `<span class="result-value">${data.greeks.delta}</span>`;
+            document.getElementById('res-gamma').innerHTML = `<span class="result-value">${data.greeks.gamma}</span>`;
+            document.getElementById('res-vega').innerHTML = `<span class="result-value">${data.greeks.vega}</span>`;
+            document.getElementById('res-theta').innerHTML = `<span class="result-value">${data.greeks.theta}</span>`;
+            document.getElementById('res-rho').innerHTML = `<span class="result-value">${data.greeks.rho}</span>`;
+        }
+        document.getElementById('res-ci-lower').innerHTML = data.ci_lower !== null ? `<span class="result-value">${data.ci_lower}</span>` : '---';
+        document.getElementById('res-ci-upper').innerHTML = data.ci_upper !== null ? `<span class="result-value">${data.ci_upper}</span>` : '---';
+        document.getElementById('res-std-dev').innerHTML = data.std_dev !== null ? `<span class="result-value">${data.std_dev}</span>` : '---';
+    }
+
+    if(form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            submitBtn.disabled = true;
+            overlay.style.display = 'flex';
+            errorMsg.style.display = 'none';
+            statusMsg.style.display = 'none';
+            
+            try {
+                const resp = await fetch('/api/calculate/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: JSON.stringify(buildPayload()),
+                });
+                const responseData = await resp.json();
+                
+                if (resp.ok && responseData.status === 'success') {
+                    renderResults(responseData.data);
+                } else {
+                    errorMsg.textContent = responseData.message || "An error occurred";
+                    errorMsg.style.display = 'block';
+                }
+            } catch (err) {
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                overlay.style.display = 'none';
+            }
+        });
+    }
+</script>
 {% endblock %}
